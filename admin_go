@@ -1,0 +1,88 @@
+include .env
+
+#help		:	Print commands help.
+.PHONY: help
+help:
+	@sed -n 's/^##//p' admin_go
+
+##
+## go		:	Deployment site.
+.PHONY: go
+go: addsettings restoredb
+	composer install
+	drush sim -y
+
+## clear		:	Delete admin_go.
+.PHONY: clear
+clear:
+	rm -rf admin_go
+
+## info		:	Help.
+.PHONY: info
+info:
+	@echo "drush sql-dump > `date +%m-%d-%Y`.sql"
+	@echo "drush sql-cli < `ls *.sql -t | head -n1`"
+	@echo "rsync -avvP USER@SERVER:/home/ ."
+	@echo "rsync -avvP file USER@SERVER:/home/"
+
+##
+## ps		:	List running containers.
+.PHONY: ps
+ps:
+	@docker ps --filter name='$(PROJECT_NAME)*'
+
+## logs		:	View containers logs.
+.PHONY: logs
+logs:
+	@docker-compose logs -f $(filter-out $@,$(MAKECMDGOALS))
+
+## prune		:	Remove containers and their volumes.
+.PHONY: prune
+prune:
+	@echo "Removing containers for $(PROJECT_NAME)..."
+	@docker-compose down -v $(filter-out $@,$(MAKECMDGOALS))
+
+## restoredb	:	Mounts last modified sql database file from root dir.
+.PHONY: restoredb
+restoredb:
+	@echo "\nDeploy `ls *.sql -t | head -n1` database"
+	drush sql-cli < `ls *.sql -t | head -n1`
+
+## addsettings	:	Compile settings.php.
+.PHONY: addsettings
+addsettings:
+	@echo "\nCompile settings.php."
+	@cp -f $(SETTINGS_ROOT)/default.settings.php $(SETTINGS_ROOT)/settings.php
+	@echo '$$settings["hash_salt"] = "randomnadich";' >> $(SETTINGS_ROOT)/settings.php
+	@echo '$$config_directories["sync"] = "config/sync";' >> $(SETTINGS_ROOT)/settings.php
+	@echo '$$config["system.file"]["path"]["temporary"] = "tmp";' >> $(SETTINGS_ROOT)/settings.php
+	@echo '$$databases["default"]["default"] = array (' >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'database' => '$(DB_NAME)'," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'username' => '$(DB_USER)'," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'password' => '$(DB_PASSWORD)'," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'prefix' => ''," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'host' => 'localhost'," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'port' => '3306'," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'namespace' => 'Drupal\\\\\\\Core\\\\\\\Database\\\\\\\Driver\\\\\\\mysql'," >> $(SETTINGS_ROOT)/settings.php
+	@echo "  'driver' => '$(DB_DRIVER)'," >> $(SETTINGS_ROOT)/settings.php
+	@echo ");" >> $(SETTINGS_ROOT)/settings.php
+
+## coin		:	Сomposer install.
+.PHONY: coin
+coin:
+	composer install
+
+## drusim		:	Import configs.
+.PHONY: drusim
+drusim:
+	drush ev '\Drupal::entityManager()->getStorage("shortcut_set")->load("default")->delete();'
+	drush cim -y
+
+## druinsi	:	Drush install site.
+.PHONY: druinsi
+druinsi:
+	drush si -y standard --account-name=$(DRUPALADMIN) --account-pass=$(DRUPALLPASS)
+	drush cset system.site uuid c7635c29-335d-4655-b2b6-38cb111042d9
+
+%:
+	@:
